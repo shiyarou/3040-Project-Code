@@ -1,34 +1,31 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from math import pi, exp
 
 # ==========================================
 # 1. LOAD & ENCODE ORIGINAL CATEGORICAL DATA
 # ==========================================
 # Assumes german.data is in the same folder.
-# This is the original file with A11, A12, etc.
 data = pd.read_csv("german.data", header=None, delim_whitespace=True)
 
-# Last column is the class label (1 = good, 2 = bad)
+# Features (first 20 columns) and labels (last column)
 X_df = data.iloc[:, :-1].copy()
-y = data.iloc[:, -1].values  # should already be 1 or 2
+y = data.iloc[:, -1].values  # 1 = good, 2 = bad
 
-# Encode categorical columns into integers
-# (numeric columns are left as-is)
+# Encode categorical columns into integers (numeric left as-is)
 for col in X_df.columns:
     if X_df[col].dtype == "object":
         X_df[col] = X_df[col].astype("category").cat.codes
 
-# Convert to numpy arrays
 X = X_df.values.astype(float)
+n_samples, n_features = X.shape
 
 # ==========================================
 # 2. TRAIN / TEST SPLIT (2/3 train, 1/3 test)
 # ==========================================
 np.random.seed(42)
-indices = np.random.permutation(len(X))
-split = int(len(X) * 2 / 3)
+indices = np.random.permutation(n_samples)
+split = int(n_samples * 2 / 3)
 
 train_idx = indices[:split]
 test_idx = indices[split:]
@@ -40,48 +37,75 @@ y_train, y_test = y[train_idx], y[test_idx]
 # 3. KNN (NO SKLEARN)
 # ==========================================
 def knn_predict_one(x, X_train, y_train, k):
-    """Predict label for a single sample x using KNN."""
     dists = np.sqrt(np.sum((X_train - x) ** 2, axis=1))
     k_idx = np.argsort(dists)[:k]
     labels, counts = np.unique(y_train[k_idx], return_counts=True)
     return labels[np.argmax(counts)]
 
 def knn_predict(X_eval, X_train, y_train, k):
-    """Predict labels for all samples in X_eval using KNN."""
     return np.array([knn_predict_one(x, X_train, y_train, k) for x in X_eval])
 
 # ==========================================
-# 4. NAIVE BAYES (GAUSSIAN, NO SKLEARN)
+# 4. CATEGORICAL NAIVE BAYES (NO SKLEARN)
 # ==========================================
-class GaussianNBManual:
+class CategoricalNBManual:
+    def __init__(self, alpha=1.0):
+        self.alpha = alpha
+
     def fit(self, X, y):
-        self.classes = np.unique(y)
-        self.means = {}
-        self.vars = {}
-        self.priors = {}
+        X = np.asarray(X)
+        y = np.asarray(y)
+        self.classes_, class_counts = np.unique(y, return_counts=True)
+        self.class_counts_ = dict(zip(self.classes_, class_counts))
+        self.class_log_prior_ = {
+            c: np.log(count / len(y)) for c, count in self.class_counts_.items()
+        }
 
-        for c in self.classes:
-            Xc = X[y == c]
-            self.means[c] = Xc.mean(axis=0)
-            self.vars[c] = Xc.var(axis=0) + 1e-6  # avoid divide-by-zero
-            self.priors[c] = len(Xc) / len(X)
+        n_features = X.shape[1]
+        self.n_features_ = n_features
 
-    def gaussian_prob(self, class_, x):
-        mean = self.means[class_]
-        var = self.vars[class_]
-        numerator = np.exp(-(x - mean) ** 2 / (2 * var))
-        denominator = np.sqrt(2 * pi * var)
-        return numerator / denominator
+        self.feature_values_ = [np.unique(X[:, j]) for j in range(n_features)]
+        self.n_values_ = [len(vals) for vals in self.feature_values_]
+
+        self.feature_counts_ = {
+            c: [dict() for _ in range(n_features)] for c in self.classes_
+        }
+
+        for c in self.classes_:
+            X_c = X[y == c]
+            for j in range(n_features):
+                vals, counts = np.unique(X_c[:, j], return_counts=True)
+                d = self.feature_counts_[c][j]
+                for v, cnt in zip(vals, counts):
+                    d[v] = cnt
+
+        return self
+
+    def _log_likelihood(self, x, c):
+        log_prob = 0.0
+        alpha = self.alpha
+        class_count = self.class_counts_[c]
+
+        for j in range(self.n_features_):
+            v = x[j]
+            counts_dict = self.feature_counts_[c][j]
+            n_values = self.n_values_[j]
+            count_v = counts_dict.get(v, 0)
+            prob = (count_v + alpha) / (class_count + alpha * n_values)
+            log_prob += np.log(prob)
+
+        return log_prob
 
     def predict(self, X):
+        X = np.asarray(X)
         preds = []
         for x in X:
-            posteriors = {}
-            for c in self.classes:
-                likelihood = np.prod(self.gaussian_prob(c, x))
-                prior = self.priors[c]
-                posteriors[c] = likelihood * prior
-            preds.append(max(posteriors, key=posteriors.get))
+            class_log_post = {}
+            for c in self.classes_:
+                log_prior = self.class_log_prior_[c]
+                log_lik = self._log_likelihood(x, c)
+                class_log_post[c] = log_prior + log_lik
+            preds.append(max(class_log_post, key=class_log_post.get))
         return np.array(preds)
 
 # ==========================================
@@ -125,13 +149,10 @@ class DecisionTreeManual:
         self.tree = self._build_tree(X, y)
 
     def _build_tree(self, X, y):
-        # If all labels are the same, return that label (leaf)
         if len(np.unique(y)) == 1:
             return y[0]
 
         feature, threshold = best_split(X, y)
-
-        # If no split improves information gain, return majority class
         if feature is None:
             return np.bincount(y).argmax()
 
@@ -148,7 +169,7 @@ class DecisionTreeManual:
 
     def _predict_one(self, x, node):
         if not isinstance(node, dict):
-            return node  # leaf
+            return node
 
         if x[node["feature"]] <= node["threshold"]:
             return self._predict_one(x, node["left"])
@@ -162,11 +183,6 @@ class DecisionTreeManual:
 # 6. METRICS (NO SKLEARN)
 # ==========================================
 def confusion_matrix_manual(y_true, y_pred):
-    """
-    Confusion matrix for classes 1 and 2:
-    [[actual=1,pred=1,  actual=1,pred=2],
-     [actual=2,pred=1,  actual=2,pred=2]]
-    """
     matrix = np.zeros((2, 2), dtype=int)
     for t, p in zip(y_true, y_pred):
         matrix[int(t) - 1, int(p) - 1] += 1
@@ -189,8 +205,7 @@ def f_score(p, r):
     return 2 * (p * r) / (p + r + 1e-9)
 
 # ==========================================
-# 7. PART B FIRST: KNN K=1..15 ERROR CURVES
-#    AND AUTO-SELECT BEST K (MIN TEST ERROR)
+# 7. PART B: KNN K=1..15 ERROR CURVES + AUTO BEST K
 # ==========================================
 print("=== KNN error vs K (1 to 15) and auto-select best K (original data) ===")
 
@@ -199,30 +214,26 @@ train_errors = []
 test_errors = []
 
 for k in K_values:
-    # Predict on training data to get training error
     y_pred_train = knn_predict(X_train, X_train, y_train, k)
     train_error = np.mean(y_pred_train != y_train)
     train_errors.append(train_error)
 
-    # Predict on test data to get test error
     y_pred_test = knn_predict(X_test, X_train, y_train, k)
     test_error = np.mean(y_pred_test != y_test)
     test_errors.append(test_error)
 
     print(f"K={k:2d} | Train Error={train_error:.4f} | Test Error={test_error:.4f}")
 
-# Pick best K as the one with minimum test error (break ties by smallest K)
 best_k_index = int(np.argmin(test_errors))
 best_k = list(K_values)[best_k_index]
 print(f"\n>>> Best K based on minimum test error: K = {best_k} "
       f"(Test Error = {test_errors[best_k_index]:.4f})")
 
-# Plot training vs test error
 plt.figure(figsize=(10, 6))
 plt.plot(list(K_values), train_errors, marker='o', label='Training Error')
 plt.plot(list(K_values), test_errors, marker='s', label='Testing Error')
 
-plt.title("KNN: Training vs Testing Error Rate (German Credit, original data)")
+plt.title("KNN: Training vs Testing Error Rate (German Credit - original data)")
 plt.xlabel("K")
 plt.ylabel("Error Rate")
 plt.xticks(list(K_values))
@@ -232,17 +243,16 @@ plt.tight_layout()
 plt.show()
 
 # ==========================================
-# 8. PART A: USE BEST K IN KNN + NB + DT
+# 8. PART A: USE BEST K IN KNN + CATEGORICAL NB + DT
 # ==========================================
 print("\n=== Classifier comparison using best K for KNN (original data) ===")
 print(f"(Using KNN with K = {best_k})")
 
-# KNN with best_k
 print(f"\nRunning KNN with k={best_k} ...")
 knn_pred = knn_predict(X_test, X_train, y_train, best_k)
 
-print("Running Naive Bayes ...")
-nb = GaussianNBManual()
+print("Running Categorical Naive Bayes ...")
+nb = CategoricalNBManual(alpha=1.0)
 nb.fit(X_train, y_train)
 nb_pred = nb.predict(X_test)
 
@@ -253,7 +263,7 @@ dt_pred = dt.predict(X_test)
 
 models_preds = {
     f"KNN (k={best_k})": knn_pred,
-    "Naive Bayes": nb_pred,
+    "Categorical NB": nb_pred,
     "Decision Tree": dt_pred
 }
 
@@ -283,7 +293,6 @@ for name, preds in models_preds.items():
         "f_score": f
     }
 
-# Comparison table
 print("\n#############################################")
 print(" COMPARISON OF CLASSIFIERS (by F-score) ")
 print("#############################################")
