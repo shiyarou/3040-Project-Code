@@ -56,23 +56,21 @@ class CategoricalNBManual:
         X = np.asarray(X)
         y = np.asarray(y)
 
-        # Class labels and counts from data
+        # Classes and counts
         self.classes_, class_counts = np.unique(y, return_counts=True)
         self.class_counts_ = dict(zip(self.classes_, class_counts))
-        n_classes = len(self.classes_)
 
-        # BALANCED PRIORS: each class gets 1 / n_classes
-        equal_prior = 1.0 / n_classes
+        # ===== BALANCED PRIORS (equal priors for each class) =====
+        equal_prior = 1.0 / len(self.classes_)
         self.class_log_prior_ = {c: np.log(equal_prior) for c in self.classes_}
+        # ==========================================================
 
-        # Feature setup
         n_features = X.shape[1]
         self.n_features_ = n_features
 
         self.feature_values_ = [np.unique(X[:, j]) for j in range(n_features)]
         self.n_values_ = [len(vals) for vals in self.feature_values_]
 
-        # feature_counts_[class][j] = dict(value -> count)
         self.feature_counts_ = {
             c: [dict() for _ in range(n_features)] for c in self.classes_
         }

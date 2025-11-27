@@ -9,7 +9,8 @@ import matplotlib.pyplot as plt
 data = pd.read_csv("german.data", header=None, delim_whitespace=True)
 
 # Features (first 20 columns) and labels (last column)
-X_df = data.iloc[:, :-1].copy()
+important_cols = [0,1,2,3,4,5,6,8,11,14]   # you can change this list
+X_df = data.iloc[:, important_cols].copy()
 y = data.iloc[:, -1].values  # 1 = good, 2 = bad
 
 # Encode categorical columns into integers (numeric left as-is)
@@ -34,7 +35,7 @@ X_train, X_test = X[train_idx], X[test_idx]
 y_train, y_test = y[train_idx], y[test_idx]
 
 # ==========================================
-# 3. KNN 
+# 3. KNN (NO SKLEARN)
 # ==========================================
 def knn_predict_one(x, X_train, y_train, k):
     dists = np.sqrt(np.sum((X_train - x) ** 2, axis=1))
@@ -46,7 +47,7 @@ def knn_predict(X_eval, X_train, y_train, k):
     return np.array([knn_predict_one(x, X_train, y_train, k) for x in X_eval])
 
 # ==========================================
-# 4. CATEGORICAL NAIVE BAYES 
+# 4. CATEGORICAL NAIVE BAYES (NO SKLEARN)
 # ==========================================
 class CategoricalNBManual:
     def __init__(self, alpha=1.0):
@@ -56,23 +57,21 @@ class CategoricalNBManual:
         X = np.asarray(X)
         y = np.asarray(y)
 
-        # Class labels and counts from data
+        # Classes and counts
         self.classes_, class_counts = np.unique(y, return_counts=True)
         self.class_counts_ = dict(zip(self.classes_, class_counts))
-        n_classes = len(self.classes_)
 
-        # BALANCED PRIORS: each class gets 1 / n_classes
-        equal_prior = 1.0 / n_classes
+        # ===== BALANCED PRIORS (equal priors for each class) =====
+        equal_prior = 1.0 / len(self.classes_)
         self.class_log_prior_ = {c: np.log(equal_prior) for c in self.classes_}
+        # ==========================================================
 
-        # Feature setup
         n_features = X.shape[1]
         self.n_features_ = n_features
 
         self.feature_values_ = [np.unique(X[:, j]) for j in range(n_features)]
         self.n_values_ = [len(vals) for vals in self.feature_values_]
 
-        # feature_counts_[class][j] = dict(value -> count)
         self.feature_counts_ = {
             c: [dict() for _ in range(n_features)] for c in self.classes_
         }
@@ -117,7 +116,7 @@ class CategoricalNBManual:
 
 
 # ==========================================
-# 5. DECISION TREE 
+# 5. DECISION TREE (ID3-LIKE, NO SKLEARN)
 # ==========================================
 def entropy(y):
     values, counts = np.unique(y, return_counts=True)
@@ -188,7 +187,7 @@ class DecisionTreeManual:
         return np.array([self._predict_one(x, self.tree) for x in X])
 
 # ==========================================
-# 6. METRICS 
+# 6. METRICS (NO SKLEARN)
 # ==========================================
 def confusion_matrix_manual(y_true, y_pred):
     matrix = np.zeros((2, 2), dtype=int)
@@ -215,7 +214,7 @@ def f_score(p, r):
 # ==========================================
 # 7. PART B: KNN K=1..15 ERROR CURVES + AUTO BEST K
 # ==========================================
-print("=== KNN error vs K (1 to 15) and auto-select best K (original data) ===")
+print("=== KNN error vs K (1 to 15) and auto-select best K (reduced data) ===")
 
 K_values = range(1, 16)
 train_errors = []
@@ -241,7 +240,7 @@ plt.figure(figsize=(10, 6))
 plt.plot(list(K_values), train_errors, marker='o', label='Training Error')
 plt.plot(list(K_values), test_errors, marker='s', label='Testing Error')
 
-plt.title("KNN: Training vs Testing Error Rate (German Credit - original data)")
+plt.title("KNN: Training vs Testing Error Rate (German Credit - reduced data)")
 plt.xlabel("K")
 plt.ylabel("Error Rate")
 plt.xticks(list(K_values))
