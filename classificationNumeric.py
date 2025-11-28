@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+#THIS IS THE FILE THAT PERFORMS THE ALGORITHMS ON THE NUMERIC DATASET INCLUDED WITH THE DATA FILES
+
 # ==========================================
 # 1. LOAD DATA (NUMERIC VERSION)
 # ==========================================

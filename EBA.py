@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+#THIS FILE CALCULATES MEAN AND MEDIAN FOR NUMERIC ATTRIBUTES AND PLOTS THE GRAPHS OF CATEGORICAL ATTRIBUTES AGAINST GOOD/BAD
+
 # ==========================================
 # 1. LOAD ORIGINAL DATA
 # ==========================================

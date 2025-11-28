@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+#THIS IS THE FILE THAT CLASSIFIES THE ORIGINAL CATEGORICAL DATASET WITHOUT TRIMMUNG OR BALANCING PRIORS
+
 # ==========================================
 # 1. LOAD & ENCODE ORIGINAL CATEGORICAL DATA
 # ==========================================
